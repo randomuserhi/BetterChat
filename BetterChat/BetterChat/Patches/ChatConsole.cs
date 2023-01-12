@@ -7,6 +7,7 @@ using HarmonyLib;
 using API;
 using Dissonance;
 using SickDev.DevConsole;
+using Il2CppSystem.Xml.Schema;
 
 namespace BetterChat
 {
@@ -46,6 +47,7 @@ namespace BetterChat
     // TODO:: Allow infinite length input
     // TODO:: Send infinite length input (split it as if you were sending multiple messages manually)
     // TODO:: Handle composition strings => https://docs.unity3d.com/ScriptReference/Input-compositionString.html
+    // TODO:: Fix bug with trying to type "o" in map chat where it pulls up objective screen
 
     [HarmonyPatch]
     public static class ChatLogger
@@ -468,6 +470,25 @@ namespace BetterChat
             return true;
         }
 
+        // TODO:: somehow add functionality to make this work without this code here (basically make it general and external)
+        public static bool jumble = false;
+        private static string PreProcess(string raw, int seed)
+        {
+            if (!jumble) return raw;
+
+            UnityEngine.Random.seed = seed;
+
+            StringBuilder sb = new StringBuilder();
+            bool rot = true;
+            for (int i = 0; i < raw.Length; i++)
+            {
+                if (raw[i] == '<') rot = false;
+                else if (raw[i] == '>') rot = true;
+                else if (rot) sb.Append($"<rotate={UnityEngine.Random.RandomRangeInt(-180, 180)}>{raw[i]}</rotate>");
+            }
+            return sb.ToString();
+        }
+
         [HarmonyPatch(typeof(PUI_GameEventLog), nameof(PUI_GameEventLog.ShowAndUpdateItemPositions))]
         [HarmonyPrefix]
         public static bool ShowAndUpdateItemPositions_Prefix(PUI_GameEventLog __instance)
@@ -500,7 +521,7 @@ namespace BetterChat
                     {
                         if (ValidateLog(history.logs[target]))
                         {
-                            __instance.m_logItems[logItem].SetText(history.logs[target].log);
+                            __instance.m_logItems[logItem].SetText(PreProcess(history.logs[target].log, logItem));
                             __instance.m_logItems[logItem].SetType(history.logs[target].type);
                             logItem++;
                         }
@@ -521,7 +542,7 @@ namespace BetterChat
                     {
                         if (ValidateLog(history.logs[target]))
                         {
-                            __instance.m_logItems[logItem].SetText(history.logs[target].log);
+                            __instance.m_logItems[logItem].SetText(PreProcess(history.logs[target].log, logItem));
                             __instance.m_logItems[logItem].SetType(history.logs[target].type);
                             logItem++;
                         }
@@ -611,6 +632,8 @@ namespace BetterChat
                 float menuVertical = InputMapper.GetAxis.Invoke(InputAction.MenuMoveVertical);
                 if (menuVertical != 0)
                 {
+                    foreach (PUI_GameEventLog log in chatlogs) log.ResetHideTimer();
+
                     if (_scrollDir == 0) _scrollDir = menuVertical;
                     if (Mathf.Sign(_scrollDir) != Mathf.Sign(menuVertical))
                     {
@@ -634,7 +657,11 @@ namespace BetterChat
 
                     // Scroll wheel
                     float menuScroll = InputMapper.GetAxis.Invoke(InputAction.MenuScroll);
-                    if (menuScroll != 0) smoothHistoryIndex -= continuousScrollSpeed * menuScroll * 1000f * Time.deltaTime;
+                    if (menuScroll != 0)
+                    {
+                        smoothHistoryIndex -= continuousScrollSpeed * menuScroll * 1000f * Time.deltaTime;
+                        foreach(PUI_GameEventLog log in chatlogs) log.ResetHideTimer();
+                    }
                     else smoothHistoryIndex = historyIndex;
                 }
 

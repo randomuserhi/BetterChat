@@ -153,6 +153,14 @@ namespace BetterChat
                 },
                 description = "Shows all channel filters."
             });
+            root.AddCommand("Chat/jumble", new Command()
+            {
+                action = (CmdNode n, Command cmd, string[] args) =>
+                {
+                    jumble = !jumble;
+                },
+                description = "Jumbles the chat :)"
+            });
 
             root.AddCommand("ChatConsole/", null);
             root.AddCommand("ChatConsole/AutoExitChat", new Command()
