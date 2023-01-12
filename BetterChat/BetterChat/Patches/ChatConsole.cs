@@ -5,6 +5,8 @@ using UnityEngine;
 using HarmonyLib;
 
 using API;
+using Dissonance;
+using SickDev.DevConsole;
 
 namespace BetterChat
 {
@@ -41,6 +43,8 @@ namespace BetterChat
     // TODO:: Handle multiline text => mainly when printing long messages or dealing with long input
     // TODO:: Stop console from clearing at end of expedition
     // TODO:: Allow illegal characters
+    // TODO:: Allow infinite length input
+    // TODO:: Send infinite length input (split it as if you were sending multiple messages manually)
     // TODO:: Handle composition strings => https://docs.unity3d.com/ScriptReference/Input-compositionString.html
 
     [HarmonyPatch]
@@ -116,6 +120,25 @@ namespace BetterChat
             }
 
             if (started) yield return result.ToString();
+        }
+
+        private static PUI_GameEventLog_Item? _parser = null;
+        private static GameObject? logItemPrefab = null;
+        public static string GetTMPString(string raw)
+        {
+            if (logItemPrefab == null)
+            {
+                APILogger.Debug(Module.Name, $"Parser object was not set yet.");
+                return "";
+            }
+
+            if (_parser == null)
+                _parser = GOUtil.SpawnChildAndGetComp<PUI_GameEventLog_Item>(logItemPrefab);
+
+            _parser.gameObject.active = false;
+            _parser.m_text.text = raw;
+            _parser.m_text.ForceMeshUpdate(true);
+            return _parser.m_text.GetParsedText();
         }
 
         // Main Functionality
@@ -350,7 +373,7 @@ namespace BetterChat
             }
             else current.Error($"Command \"{cmd}\" does not exist.");
         }
-        private static bool AddGlobalCommand(string cmd, Command command)
+        public static bool AddGlobalCommand(string cmd, Command command)
         {
             if (cmd == string.Empty)
             {
@@ -372,211 +395,38 @@ namespace BetterChat
             }
         }
 
-        private static string prefix = ".";
-        private static Dictionary<string, Command> globalCommands = new Dictionary<string, Command>();
+        public static string prefix = ".";
+        public static Dictionary<string, Command> globalCommands = new Dictionary<string, Command>();
         public static readonly CmdNode root = new CmdNode(); // TODO:: make root private and create AddCommand and AddDirectory functions
-        private static CmdNode current = root;
+        public static CmdNode current = root;
 
         // TODO:: cleanup and move dictionary into LogHistory class
-        private class LogHistory
+        public class LogHistory
         {
             public struct LogItem
             {
-                public string log { get; set; }
-                public eGameEventChatLogType type { get; set; }
+                public enum Type
+                {
+                    Internal,
+                    GTFO
+                }
+
+                public string log;
+                public Type internalType;
+                public eGameEventChatLogType type;
             }
 
             public List<LogItem> logs = new List<LogItem>();
         }
-        private static float smoothHistoryIndex = 0;
-        private static int historyIndex { get => Mathf.RoundToInt(smoothHistoryIndex); set => smoothHistoryIndex = value; }
-        private static float _scrollDir = 0;
+        public static float smoothHistoryIndex = 0;
+        public static int historyIndex { get => Mathf.RoundToInt(smoothHistoryIndex); set => smoothHistoryIndex = value; }
+        public static float _scrollDir = 0;
         // TODO:: add scroll speeds to config file
-        private const float historyScrollDelay = 0.2f;
-        private static float historyScrollDelayTimer = 0;
-        private static float discreteScrollSpeed = 15f; // lines per second
-        private static float continuousScrollSpeed = 1f;
-        private static Dictionary<int, LogHistory> logHistory = new Dictionary<int, LogHistory>();
-
-        static ChatLogger()
-        {
-            AddGlobalCommand("cd", new Command()
-            {
-                action = (CmdNode n, Command cmd, string[] args) =>
-                {
-                    string[] drive = args[0].Split(":");
-                    if (drive.Length > 2) n.Error($"Unable to parse path \"{args[0]}\".");
-                    else if (drive.Length == 2)
-                    {
-                        if (drive[0] == "root" || drive[0] == "r")
-                        {
-                            CmdNode? to = root.GetNode(drive[1]);
-                            if (to != null)
-                            {
-                                current = to;
-                                current.Debug($"{current.fullPath}");
-                            }
-                        }
-                        else n.Error($"Drive \"{drive[0]}\" does not exist.");
-                    }
-                    else
-                    {
-                        CmdNode? to = n.GetNode(args[0]);
-                        if (to != null)
-                        {
-                            current = to;
-                            current.Debug($"{current.fullPath}");
-                        }
-                    }
-                },
-                description = "Traverse to given path.",
-                syntax = "<path>"
-            });
-
-            AddGlobalCommand("clear", new Command()
-            {
-                action = (CmdNode n, Command cmd, string[] args) =>
-                {
-                    foreach (LogHistory history in logHistory.Values)
-                        history.logs.Clear();
-                    historyIndex = 0;
-                },
-                description = "Clears log history."
-            });
-
-            // TODO:: show node descriptions => need to restructure system to somehow store help data
-            AddGlobalCommand("ls", new Command()
-            {
-                action = (CmdNode n, Command cmd, string[] args) =>
-                {
-                    n.Debug($"Command Nodes in {n.fullPath}:");
-                    foreach (string node in n.path.Keys)
-                        Print($"  {Color("#f00", node)}");
-                    Print("  -- End --");
-                },
-                description = "List command directories in current directory."
-            });
-
-            // TODO:: show command descriptions => need to restructure system to somehow store help data
-            AddGlobalCommand("help", new Command()
-            {
-                action = (CmdNode n, Command cmd, string[] args) =>
-                {
-                    n.Debug($"Global commands:");
-                    foreach (string cmds in globalCommands.Keys)
-                        Print($"  {globalCommands[cmds].help}");
-                    Print("  -- End --");
-                    n.Debug($"Commands in {n.fullPath}:");
-                    foreach (string cmds in n.commands.Keys)
-                        Print($"  {n.commands[cmds].help}");
-                    Print("  -- End --");
-                },
-                description = "List all commands in current directory."
-            });
-
-            AddGlobalCommand("bottom", new Command()
-            {
-                action = (CmdNode n, Command cmd, string[] args) =>
-                {
-                    // TODO:: several bits use the below code snippet => convert to utility function
-                    int minLogLength = int.MaxValue;
-                    foreach (LogHistory history in logHistory.Values) if (history.logs.Count < minLogLength) minLogLength = history.logs.Count;
-                    historyIndex = minLogLength - 1;
-                },
-                description = "Scroll to bottom of chat."
-            });
-
-            root.AddCommand("Chat/", null);
-            root.AddCommand("Chat/post", new Command()
-            {
-                action = (CmdNode n, Command cmd, string[] args) =>
-                {
-                    PlayerChatManager.WantToSentTextMessage(Player.PlayerManager.GetLocalPlayerAgent(), Color("#f00", args[0]));
-                },
-                description = "Post a chat message in red.",
-                syntax = "<message>"
-            });
-
-            root.AddCommand("ChatConsole/", null);
-            root.AddCommand("ChatConsole/AutoExitChat", new Command()
-            {
-                action = (CmdNode n, Command cmd, string[] args) =>
-                {
-                    if (args.Length == 0)
-                    {
-                        n.Debug(cmd.help);
-                        return;
-                    }
-                    int value;
-                    if (int.TryParse(args[0], out value))
-                    {
-                        if (value != 0 && value != 1)
-                        {
-                            n.Debug(cmd.help);
-                            return;
-                        }
-                        ConfigManager.AutoExitChat = value == 1;
-                        n.Debug($"AutoExitChat set to {(ConfigManager.AutoExitChat ? "True" : "False")}");
-                    }
-                    else
-                    {
-                        n.Debug(cmd.help);
-                        return;
-                    }
-                },
-                description = "1 for enable, 0 for disable",
-                syntax = "<value>"
-            });
-            root.AddCommand("ChatConsole/PrintExceptions", new Command()
-            {
-                action = (CmdNode n, Command cmd, string[] args) =>
-                {
-                    if (args.Length == 0)
-                    {
-                        n.Debug(cmd.help);
-                        return;
-                    }
-                    int value;
-                    if (int.TryParse(args[0], out value))
-                    {
-                        if (value != 0 && value != 1)
-                        {
-                            n.Debug(cmd.help);
-                            return;
-                        }
-                        ConfigManager.PrintExceptions = value == 1;
-                        n.Debug($"PrintExceptions set to {(ConfigManager.PrintExceptions ? "True" : "False")}");
-                    }
-                    else
-                    {
-                        n.Debug(cmd.help);
-                        return;
-                    }
-                },
-                description = "PrintExceptions <value>, 1 for enable, 0 for disable"
-            });
-
-            // SUSSY CODE => some check for minimum time seems to be in place to prevent cheating, thats why we set progression time
-            root.AddCommand("Cheats/");
-            root.AddCommand("Cheats/CompleteExpedition", new Command()
-            {
-                action = (CmdNode n, Command cmd, string[] args) =>
-                {
-                    // TODO:: add a check if you are actually in a level
-
-                    // Test if ChangeState works when not host.
-                    if (SNetwork.SNet.IsMaster)
-                    {
-                        Clock.ExpeditionProgressionTime = 10000;
-                        WardenObjectiveManager.ForceCompleteObjective(LevelGeneration.LG_LayerType.MainLayer);
-                        WardenObjectiveManager.ForceCompleteObjective(LevelGeneration.LG_LayerType.SecondaryLayer);
-                        WardenObjectiveManager.ForceCompleteObjective(LevelGeneration.LG_LayerType.ThirdLayer);
-                        GameStateManager.ChangeState(eGameStateName.ExpeditionSuccess);
-                    }
-                    else n.Error($"You need to be host in order to execute this command.");
-                }
-            });
-        }
+        public const float historyScrollDelay = 0.2f;
+        public static float historyScrollDelayTimer = 0;
+        public static float discreteScrollSpeed = 15f; // lines per second
+        public static float continuousScrollSpeed = 1f;
+        public static Dictionary<int, LogHistory> logHistory = new Dictionary<int, LogHistory>();
 
         // Log History
         [HarmonyPatch(typeof(PUI_GameEventLog), nameof(PUI_GameEventLog.AddLogItem))]
@@ -589,9 +439,33 @@ namespace BetterChat
             if (historyIndex == minLogLength - 1) historyIndex++;
 
             if (!logHistory.ContainsKey(__instance.GetInstanceID())) logHistory.Add(__instance.GetInstanceID(), new LogHistory());
-            logHistory[__instance.GetInstanceID()].logs.Add(new LogHistory.LogItem() { log = log, type = type });
+            logHistory[__instance.GetInstanceID()].logs.Add(new LogHistory.LogItem() { log = log, type = type, internalType = LogHistory.LogItem.Type.GTFO });
 
             return false;
+        }
+
+        private static void AddLogItem(string log, eGameEventChatLogType type)
+        {
+            // Scroll if at bottom
+            int minLogLength = int.MaxValue;
+            foreach (LogHistory history in logHistory.Values) if (history.logs.Count < minLogLength) minLogLength = history.logs.Count;
+            if (historyIndex == minLogLength - 1) historyIndex++;
+            
+            foreach (LogHistory history in logHistory.Values) history.logs.Add(new LogHistory.LogItem() { log = log, type = type, internalType = LogHistory.LogItem.Type.Internal });
+        }
+
+        public static HashSet<string> channelFilters = new HashSet<string>();
+        private static bool ValidateLog(LogHistory.LogItem item)
+        {
+            string parse = GetTMPString(item.log);
+            foreach (string channel in channelFilters)
+            {
+                if (item.internalType != LogHistory.LogItem.Type.Internal)
+                {
+                    if (parse.StartsWith($"> > {channel}")) return false;
+                }
+            }
+            return true;
         }
 
         [HarmonyPatch(typeof(PUI_GameEventLog), nameof(PUI_GameEventLog.ShowAndUpdateItemPositions))]
@@ -618,35 +492,43 @@ namespace BetterChat
             LogHistory history = logHistory[__instance.GetInstanceID()];
             if (PlayerChatManager.InChatMode)
             {
-                for (int i = 0; i < __instance.m_logItems.Count; i++)
+                for (int i = 0, logItem = 0; i < __instance.m_logItems.Count; i++)
                 {
                     int target = historyIndex - i;
 
                     if (target >= 0 && target < history.logs.Count)
                     {
-                        __instance.m_logItems[i].SetText(history.logs[target].log);
-                        __instance.m_logItems[i].SetType(history.logs[target].type);
+                        if (ValidateLog(history.logs[target]))
+                        {
+                            __instance.m_logItems[logItem].SetText(history.logs[target].log);
+                            __instance.m_logItems[logItem].SetType(history.logs[target].type);
+                            logItem++;
+                        }
                     }
                     else
                     {
-                        __instance.m_logItems[i].SetText(string.Empty);
+                        __instance.m_logItems[logItem++].SetText(string.Empty);
                     }
                 }
             }
             else
             {
-                for (int i = 0; i < __instance.m_logItems.Count; i++)
+                for (int i = 0, logItem = 0; i < __instance.m_logItems.Count; i++)
                 {
                     int target = history.logs.Count - 1 - i;
 
                     if (target >= 0 && target < history.logs.Count)
                     {
-                        __instance.m_logItems[i].SetText(history.logs[target].log);
-                        __instance.m_logItems[i].SetType(history.logs[target].type);
+                        if (ValidateLog(history.logs[target]))
+                        {
+                            __instance.m_logItems[logItem].SetText(history.logs[target].log);
+                            __instance.m_logItems[logItem].SetType(history.logs[target].type);
+                            logItem++;
+                        }
                     }
                     else
                     {
-                        __instance.m_logItems[i].SetText(string.Empty);
+                        __instance.m_logItems[logItem++].SetText(string.Empty);
                     }
                 }
             }
@@ -661,20 +543,69 @@ namespace BetterChat
             __instance.ShowAndUpdateItemPositions();
         }
 
+        // TODO:: allow long multi line messages etc...
+        //     :: Handle text mesh pro properly
         [HarmonyPatch(typeof(PlayerChatManager), nameof(PlayerChatManager.UpdateTextChatInput))]
         [HarmonyPrefix]
-        public static void UpdateTextChatInput_Prefix(PlayerChatManager __instance)
+        public static bool UpdateTextChatInput_Prefix(PlayerChatManager __instance)
         {
             if (!PlayerChatManager.TextChatInputEnabled)
             {
-                return;
+                return false;
+            }
+            if (PlayerChatManager.Current != null && !PlayerChatManager.InChatMode && InputMapper.GetButtonDown.Invoke(InputAction.TextChatOpenSend))
+            {
+                PlayerChatManager.Log("Open chat window");
+                __instance.EnterChatMode();
             }
             else
             {
                 if (!(PlayerChatManager.Current != null) || !PlayerChatManager.InChatMode)
                 {
-                    return;
+                    return false;
                 }
+                if (InputMapper.GetButtonDown.Invoke(InputAction.TextChatClose))
+                {
+                    __instance.ExitChatMode();
+                    return false;
+                }
+
+                // Manage input:
+                string inputString = Input.inputString;
+                for (int i = 0; i < inputString.Length; i++)
+                {
+                    char c = inputString[i];
+                    /*bool flag = false;
+                    for (int j = 0; j < __instance.m_forbiddenChars.Length; j++)
+                    {
+                        if (c.Equals((char)__instance.m_forbiddenChars[j]))
+                        {
+                            flag = true;
+                            break;
+                        }
+                    }
+                    if (flag)
+                    {
+                        continue;
+                    }*/
+                    if (c == "\b"[0])
+                    {
+                        if (__instance.m_currentValue.Length > 0)
+                        {
+                            __instance.m_currentValue = __instance.m_currentValue.Substring(0, __instance.m_currentValue.Length - 1);
+                        }
+                    }
+                    else if (c == "\n"[0] || c == "\r"[0])
+                    {
+                        __instance.PostMessage();
+                    }
+                    else// if (__instance.m_currentValue.Length < __instance.m_maxLen)
+                    {
+                        __instance.m_currentValue += c;
+                    }
+                }
+                __instance.m_currentImeCompositionString = Input.compositionString;
+                __instance.UpdateMessage();
 
                 // Allow scrolling of chat
                 float menuVertical = InputMapper.GetAxis.Invoke(InputAction.MenuMoveVertical);
@@ -713,6 +644,8 @@ namespace BetterChat
                 if (smoothHistoryIndex < 0) smoothHistoryIndex = 0;
                 else if (smoothHistoryIndex > minLogLength - 1) smoothHistoryIndex = minLogLength - 1;
             }
+
+            return false;
         }
 
 
@@ -778,16 +711,17 @@ namespace BetterChat
         [HarmonyPostfix]
         public static void PUI_GameEventLog_Setup(PUI_GameEventLog __instance)
         {
+            logItemPrefab = __instance.m_logItemPrefab;
             chatlogs.Add(__instance);
         }
 
         // TODO:: Adapt to use https://stackoverflow.com/questions/54100688/would-like-to-count-the-characters-in-a-string-excluding-rich-text-formatting
         // TODO:: Fix cases where text on new line wont have color if color tag is left behind on previous line
-        private static void Print(string data, bool raw = false)
+        public static void Print(string data, bool raw = false)
         {
             if (data == string.Empty)
             {
-                foreach (PUI_GameEventLog chatlog in chatlogs) chatlog.AddLogItem($"", eGameEventChatLogType.IncomingChat);
+                AddLogItem($"", eGameEventChatLogType.IncomingChat);
                 return;
             }
 
@@ -813,7 +747,7 @@ namespace BetterChat
                 else if (!raw && !escaped && c == '>') counting = true;
                 else if (c == '\n')
                 {
-                    foreach (PUI_GameEventLog chatlog in chatlogs) chatlog.AddLogItem($"{gap}{sb}", eGameEventChatLogType.IncomingChat);
+                    AddLogItem($"{gap}{sb}", eGameEventChatLogType.IncomingChat);
 
                     if (gap == string.Empty)
                     {
@@ -828,7 +762,7 @@ namespace BetterChat
                     ++count;
                     if (count >= chunk)
                     {
-                        foreach (PUI_GameEventLog chatlog in chatlogs) chatlog.AddLogItem($"{gap}{sb}", eGameEventChatLogType.IncomingChat);
+                        AddLogItem($"{gap}{sb}", eGameEventChatLogType.IncomingChat);
 
                         if (gap == string.Empty)
                         {
@@ -840,7 +774,7 @@ namespace BetterChat
                     }
                 }
             }
-            if (sb.Length != 0) foreach (PUI_GameEventLog chatlog in chatlogs) chatlog.AddLogItem($"{gap}{sb.ToString()}", eGameEventChatLogType.IncomingChat);
+            if (sb.Length != 0) AddLogItem($"{gap}{sb}", eGameEventChatLogType.IncomingChat);
         }
 
         public static void Debug(string module, object data)
