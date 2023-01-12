@@ -1,9 +1,12 @@
-﻿using BepInEx;
+﻿using UnityEngine;
+using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
 
 using API;
 using static BetterChat.ChatLogger;
+using SNetwork;
+using MultiplayerBasicExample;
 
 namespace BetterChat
 {
@@ -125,7 +128,57 @@ namespace BetterChat
             {
                 action = (CmdNode n, Command cmd, string[] args) =>
                 {
-                    channelFilters.Add(args[0]);
+                    int lookup = -1;
+                    switch (args[0])
+                    {
+                        case "pink": 
+                        case "red":
+                            lookup = 0;
+                            break;
+                        case "green":
+                            lookup = 1;
+                            break;
+                        case "blue":
+                            lookup = 2;
+                            break;
+                        case "purple":
+                            lookup = 3;
+                            break;
+                        default:
+                            if (args[0] == string.Empty)
+                            {
+                                n.Error("This channel is invalid.");
+                                return;
+                            }
+                            else
+                                channelFilters.Add(args[0]);
+                            return;
+                    }
+                    if (lookup != -1)
+                    {
+                        bool found = false;
+                        for (int i = 0; i < SNet.Slots.SlottedPlayers.Count; i++)
+                        {
+                            SNet_Player player = SNet.Slots.SlottedPlayers[i];
+                            //n.Debug($"color: {player.PlayerColor} > {player.PlayerColor.r} {player.PlayerColor.g} {player.PlayerColor.b}");
+                            if (Player.PlayerManager.GetStaticPlayerColor(lookup) == player.PlayerColor)
+                            {
+                                if (player.IsBot)
+                                {
+                                    n.Error("This player is a bot.");
+                                    return;
+                                }
+                                else
+                                {
+                                    found = true;
+                                    n.Debug($"Muted {player.GetName()}.");
+                                    channelFilters.Add(player.GetName());
+                                }
+                            }
+                        }
+                        if (found == false)
+                            n.Error($"Unable to find player slotted in colour {args[0]}.");
+                    }
                 },
                 description = "Mute a chat channel.",
                 syntax = "<channel>"
@@ -134,10 +187,57 @@ namespace BetterChat
             {
                 action = (CmdNode n, Command cmd, string[] args) =>
                 {
-                    if (channelFilters.Contains(args[0]))
-                        channelFilters.Remove(args[0]);
-                    else
-                        n.Error($"Channel \"{args[0]}\" does not exist");
+                    int lookup = -1;
+                    switch (args[0])
+                    {
+                        case "pink":
+                        case "red":
+                            lookup = 0;
+                            break;
+                        case "green":
+                            lookup = 1;
+                            break;
+                        case "blue":
+                            lookup = 2;
+                            break;
+                        case "purple":
+                            lookup = 3;
+                            break;
+                        default:
+                            if (args[0] == string.Empty)
+                            {
+                                n.Error("This channel is invalid.");
+                                return;
+                            }
+                            else
+                                channelFilters.Remove(args[0]);
+                            return;
+                    }
+                    if (lookup != -1)
+                    {
+                        bool found = false;
+                        for (int i = 0; i < SNet.Slots.SlottedPlayers.Count; i++)
+                        {
+                            SNet_Player player = SNet.Slots.SlottedPlayers[i];
+                            //n.Debug($"color: {player.PlayerColor} > {player.PlayerColor.r} {player.PlayerColor.g} {player.PlayerColor.b}");
+                            if (Player.PlayerManager.GetStaticPlayerColor(lookup) == player.PlayerColor)
+                            {
+                                if (player.IsBot)
+                                {
+                                    n.Error("This player is a bot.");
+                                    return;
+                                }
+                                else
+                                {
+                                    found = true;
+                                    n.Debug($"Unmuted {player.GetName()}.");
+                                    channelFilters.Remove(player.GetName());
+                                }
+                            }
+                        }
+                        if (found == false)
+                            n.Error($"Unable to find player slotted in colour {args[0]}.");
+                    }
                 },
                 description = "Unmute a chat channel.",
                 syntax = "<channel>"
