@@ -10,9 +10,16 @@ namespace BetterChat.Patches
         public static bool godMode = false;
         public static bool aimPunch = true;
 
+        private static long lastHeal = 0;
         private static void SendFullHealth(Dam_PlayerDamageBase __instance)
         {
-            __instance.AddHealth(100, __instance.Owner);
+            if (SNet.IsMaster) return;
+            long now = ((DateTimeOffset)DateTime.Now).ToUnixTimeMilliseconds();
+            if (now - lastHeal > 1000)
+            {
+                __instance.AddHealth(100, __instance.Owner);
+                lastHeal = now;
+            }
         }
 
         [HarmonyPatch(typeof(Dam_SyncedDamageBase), nameof(Dam_SyncedDamageBase.RegisterDamage))]

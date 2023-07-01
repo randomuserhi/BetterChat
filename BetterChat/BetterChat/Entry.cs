@@ -352,7 +352,7 @@ namespace BetterChat
                     Cheats.godMode = !Cheats.godMode;
                     string state = Cheats.godMode ? "active" : "deactivated";
                     n.Debug($"God mode is now {state}");
-                    if (!SNet.IsMaster) n.Warn($"You are a client, thus you can still be one shot by mines or large falls.");
+                    if (!SNet.IsMaster) n.Warn($"For clients, god mode is simply increased regeneration. If you take more damage than you can regenerate you will die.");
                 }
             });
             root.AddCommand("Cheats/aimPunch", new Command()
