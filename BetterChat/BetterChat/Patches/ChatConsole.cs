@@ -5,9 +5,6 @@ using UnityEngine;
 using HarmonyLib;
 
 using API;
-using Dissonance;
-using SickDev.DevConsole;
-using Il2CppSystem.Xml.Schema;
 
 namespace BetterChat
 {

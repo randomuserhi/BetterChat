@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿#define CHEATS
+
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
@@ -6,7 +7,9 @@ using HarmonyLib;
 using API;
 using static BetterChat.ChatLogger;
 using SNetwork;
-using MultiplayerBasicExample;
+using BetterChat.Patches;
+using Player;
+using Agents;
 
 namespace BetterChat
 {
@@ -22,7 +25,7 @@ namespace BetterChat
     {
         public override void Load()
         {
-            APILogger.Debug(Module.Name, "Loaded BetterChat");
+            APILogger.Debug(Module.Name, $"Loaded {Module.Name} {Module.Version}");
             harmony = new Harmony(Module.GUID);
             harmony.PatchAll();
 
@@ -321,6 +324,7 @@ namespace BetterChat
                 description = "PrintExceptions <value>, 1 for enable, 0 for disable"
             });
 
+#if CHEATS
             // SUSSY CODE => some check for minimum time seems to be in place to prevent cheating, thats why we set progression time
             root.AddCommand("Cheats/");
             root.AddCommand("Cheats/completeExpedition", new Command()
@@ -341,6 +345,64 @@ namespace BetterChat
                     else n.Error($"You need to be host in order to execute this command.");
                 }
             });
+            root.AddCommand("Cheats/godMode", new Command()
+            {
+                action = (CmdNode n, Command cmd, string[] args) =>
+                {
+                    Cheats.godMode = !Cheats.godMode;
+                    string state = Cheats.godMode ? "active" : "deactivated";
+                    n.Debug($"God mode is now {state}");
+                    if (!SNet.IsMaster) n.Warn($"You are a client, thus you can still be one shot by mines or large falls.");
+                }
+            });
+            root.AddCommand("Cheats/aimPunch", new Command()
+            {
+                action = (CmdNode n, Command cmd, string[] args) =>
+                {
+                    Cheats.aimPunch = !Cheats.aimPunch;
+                    string state = Cheats.aimPunch ? "active" : "deactivated";
+                    n.Debug($"Aim punch is now {state}");
+                }
+            });
+            root.AddCommand("Cheats/revive", new Command()
+            {
+                action = (CmdNode n, Command cmd, string[] args) =>
+                {
+                    PlayerAgent? player = null;
+                    if (args.Length == 0) player = PlayerManager.GetLocalPlayerAgent();
+                    else if (args.Length == 1)
+                    {
+                        if (int.TryParse(args[0], out int value))
+                        {
+                            value -= 1;
+                            if (value < 0 || value > 3)
+                            {
+                                n.Error("Slot value can only be 1-4.");
+                                return;
+                            }
+                            player = PlayerManager.PlayerAgentsInLevel[value];
+                        }
+                    }
+                    else
+                    {
+                        n.Debug(cmd.help);
+                        return;
+                    }
+                    if (player != null && PlayerManager.GetLocalPlayerAgent() != null)
+                    {
+                        if (player.Alive)
+                        {
+                            n.Error("Player is alive.");
+                            return;
+                        }
+                        AgentReplicatedActions.PlayerReviveAction(player, PlayerManager.GetLocalPlayerAgent(), player.transform.position);
+                    }
+                    else n.Error("Player does not exist in slot.");
+                },
+                description = "revive <slot>, if no slot is provided, revives self"
+            });
+#endif
+
         }
 
         private Harmony? harmony;
