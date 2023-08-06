@@ -10,6 +10,7 @@ using SNetwork;
 using BetterChat.Patches;
 using Player;
 using Agents;
+using GameData;
 
 namespace BetterChat
 {
@@ -322,6 +323,33 @@ namespace BetterChat
                     }
                 },
                 description = "PrintExceptions <value>, 1 for enable, 0 for disable"
+            });
+
+            root.AddCommand("Stamina/");
+            root.AddCommand("Stamina/rest", new Command()
+            {
+                action = (CmdNode n, Command cmd, string[] args) =>
+                {
+                    PlayerAgent player = PlayerManager.GetLocalPlayerAgent();
+                    PlayerStamina stamina = player.Stamina;
+                    n.Debug($"StaminaTimeBeforeResting: {stamina.PlayerData.StaminaTimeBeforeResting}");
+                }
+            });
+            root.AddCommand("Stamina/eg", new Command()
+            {
+                action = (CmdNode n, Command cmd, string[] args) =>
+                {
+                    PlayerStamina.EnableStaminaDebugGraph = true;
+                    n.Debug($"Enabled Stamina graph");
+                }
+            });
+            root.AddCommand("Stamina/dg", new Command()
+            {
+                action = (CmdNode n, Command cmd, string[] args) =>
+                {
+                    PlayerStamina.EnableStaminaDebugGraph = false;
+                    n.Debug($"Disabled Stamina graph");
+                }
             });
 
 #if CHEATS
