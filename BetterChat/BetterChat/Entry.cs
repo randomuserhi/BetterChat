@@ -11,6 +11,8 @@ using BetterChat.Patches;
 using Player;
 using Agents;
 using GameData;
+using UnityEngine;
+using Enemies;
 
 namespace BetterChat
 {
@@ -326,6 +328,36 @@ namespace BetterChat
             });
 
             root.AddCommand("Stamina/");
+            root.AddCommand("Stamina/get", new Command()
+            {
+                action = (CmdNode n, Command cmd, string[] args) =>
+                {
+                    PlayerAgent player = PlayerManager.GetLocalPlayerAgent();
+                    PlayerStamina stamina = player.Stamina;
+                    n.Debug($"StaminaRegenInCombat per Second: {stamina.StaminaRegenInCombat}");
+                    n.Debug($"StaminaRegenOutOfCombat per Second: {stamina.StaminaRegenOutOfCombat}");
+                    n.Debug($"StaminaMoveSpeedCurveExponent: {stamina.PlayerData.StaminaMoveSpeedCurveExponent}");
+
+                    Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppArrayBase<EnemyAgent> agents = GameObject.FindObjectsOfType<EnemyAgent>();
+                    for (int i = 0; i < agents.Length; i++)
+                    {
+                        if (agents[i].EnemyData.name == "Striker_Hibernate")
+                        {
+                            n.Debug($"Striker Move Speed: {agents[i].GetComponent<EnemyLocomotion>().PathMove.GetMoveSpeed()}");
+                            break;
+                        }
+                    }
+                }
+            });
+            root.AddCommand("Stamina/setStam", new Command()
+            {
+                action = (CmdNode n, Command cmd, string[] args) =>
+                {
+                    PlayerAgent player = PlayerManager.GetLocalPlayerAgent();
+                    PlayerStamina stamina = player.Stamina;
+                    stamina.m_currentStamina = 0;
+                }
+            });
             root.AddCommand("Stamina/rest", new Command()
             {
                 action = (CmdNode n, Command cmd, string[] args) =>
